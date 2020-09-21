@@ -34,7 +34,10 @@ fn main() {
                     appsecret: String::from("gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"),
                 });
                 let values = youdao_searcher.search(String::from(p));
-                println!("单词的释义是: {:?}", values);
+                //todo 将查询出来的单词插入数据库
+                let conn = establish_connection();
+                println!("单词的释义是: {:?}", &values);
+                create_word(&conn, p, serde_json::to_string(&values).unwrap().as_str())
             } else {
                 println!("请输入param参数");
             }
@@ -130,6 +133,7 @@ pub fn create_word<'a>(conn: &SqliteConnection, name_field: &'a str, exp_cn_fiel
     }
     // println!("查询到了{}条数据", word_results.len());
 }
+
 
 
 
