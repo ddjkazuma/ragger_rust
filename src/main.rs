@@ -7,6 +7,8 @@ use self::ragger_api::models::*;
 use self::ragger_api::*;
 use clap::App;
 use std::io::{stdin, stdout, Write};
+use self::ragger_api::schema::words;
+use self::ragger_api::schema::words::dsl::*;
 
 // #[derive(StructOpt)]
 // struct Cli{
@@ -29,15 +31,22 @@ fn main() {
     if let Some(o) = matches.value_of("operation") {
         if o.eq("query") {
             if let Some(p) = matches.value_of("param") {
-                let youdao_searcher = YoudaoSearcher::new(YoudaoConfig {
-                    appkey: String::from("2f3a48a702316da0"),
-                    appsecret: String::from("gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"),
-                });
-                let values = youdao_searcher.search(String::from(p));
-                //todo 将查询出来的单词插入数据库
+                //todo 先查询一下这个单词在数据库里是否存在
                 let conn = establish_connection();
-                println!("单词的释义是: {:?}", &values);
-                create_word(&conn, p, serde_json::to_string(&values).unwrap().as_str())
+                let word_results:Vec<Word> = words.filter(name.eq(p)).limit(1).load::<Word>(&conn).expect("查询出错了");
+                if word_results.len() > 0 {
+                    println!("单词的释义是: {}", word_results.get(0).unwrap().exp_cn);
+                }else{
+                    let youdao_searcher = YoudaoSearcher::new(YoudaoConfig {
+                        appkey: String::from("2f3a48a702316da0"),
+                        appsecret: String::from("gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"),
+                    });
+                    let values = youdao_searcher.search(String::from(p));
+                    //todo 将查询出来的单词插入数据库
+                    println!("单词的释义是: {:?}", &values);
+                    create_word(&conn, p, serde_json::to_string(&values).unwrap().as_str());
+                }
+
             } else {
                 println!("请输入param参数");
             }
@@ -65,8 +74,6 @@ fn main() {
 
                 }
             }
-            //todo 如果vec的长度为空则不用循环了
-            // println!(">确认开始复习吗? Y/N");
             loop {
                 if let Some(current_word) = supervisor.get_current_word(){
                     match stdout().flush() {
@@ -82,6 +89,8 @@ fn main() {
                         // _prompt 给出例句提示
                         // _skip 跳过当前复习的单词, 不给答案, 不算次数
                         // _cheat 直接给出答案, 不算次数
+                        // _remove 将当前单词从表中直接移除单词
+                        // _
                         "_exit" => break,//放弃复习
                         _ => {
                             if supervisor.exam(&answer) {
@@ -119,18 +128,17 @@ fn main() {
 
 
 pub fn create_word<'a>(conn: &SqliteConnection, name_field: &'a str, exp_cn_field: &'a str) {
-    use ragger_api::schema::words;
-    use ragger_api::schema::words::dsl::*;
+    // use ragger_api::schema::words::dsl::*;
     let new_word = NewWord {
         name: name_field,
         exp_cn: exp_cn_field,
     };
-    println!("要插入的数据是 {:?}", &new_word);
+    // println!("要插入的数据是 {:?}", &new_word);
     diesel::insert_into(words::table).values(new_word).execute(conn).expect("插入数据失败");
-    let word_results = words.filter(status.eq(0)).limit(10).load::<Word>(conn).expect("查询出错了");
-    for word in word_results {
-        println!("单词名称是:{}, 单词释义:{}", word.name, word.exp_cn);
-    }
+    // let word_results = words.filter(status.eq(0)).limit(10).load::<Word>(conn).expect("查询出错了");
+    // for word in word_results {
+    //     println!("单词名称是:{}, 单词释义:{}", word.name, word.exp_cn);
+    // }
     // println!("查询到了{}条数据", word_results.len());
 }
 

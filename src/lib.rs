@@ -30,7 +30,7 @@ pub trait Searchable {
 
 pub trait Supervisable {
     //初始化
-    fn initialize() -> Supervisor;
+    fn initialize() -> Self;
     //检查输入的释义是否和焦点单词的释义相同
     fn exam(&self, explanation: &str) -> bool;
     //向前迭代一个单词
@@ -56,8 +56,9 @@ pub struct Supervisor {
 impl Supervisable for Supervisor {
     fn initialize() -> Supervisor {
         let conn = establish_connection();
-        let word_results = words.filter(status.gt(-1)).limit(10).load::<Word>(&conn).expect
+        let word_results:Vec<Word> = words.filter(status.gt(-1)).load::<Word>(&conn).expect
         ("查询出错了");
+        //todo 获取tasks时要限制下数量
         return Supervisor {
             tasks: word_results,
             cursor: 0,
