@@ -1,6 +1,6 @@
 use super::schema::words;
 
-#[derive(Queryable)]
+#[derive(Queryable, Clone)]
 pub struct Word {
     pub id: i32,
     pub name: String,

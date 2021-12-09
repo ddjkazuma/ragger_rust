@@ -5,6 +5,7 @@ extern crate crypto;
 extern crate uuid;
 extern crate chrono;
 extern crate serde;
+extern crate termion;
 
 
 pub mod models;
@@ -20,17 +21,20 @@ use crypto::digest::Digest;
 use uuid::Uuid;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde::export::fmt::Debug;
 use models::Word;
 use schema::words::dsl::*;
+use rand::thread_rng;
+use rand::seq::SliceRandom;
+use std::cmp::min;
+
 
 pub trait Searchable {
-    fn search(&self, word: String) -> Vec<String>;
+    fn search(&self, word: String) -> Result<Vec<String>, ()>;
 }
 
 pub trait Supervisable {
     //初始化
-    fn initialize() -> Self;
+    fn initialize(size_o: Option<usize>) -> Self;
     //检查输入的释义是否和焦点单词的释义相同
     fn exam(&self, explanation: &str) -> bool;
     //向前迭代一个单词
@@ -53,17 +57,29 @@ pub struct Supervisor {
     conn: SqliteConnection,
 }
 
+
 impl Supervisable for Supervisor {
-    fn initialize() -> Supervisor {
+    fn initialize(size_o :Option<usize>) -> Supervisor {
         let conn = establish_connection();
-        let word_results:Vec<Word> = words.filter(status.gt(-1)).load::<Word>(&conn).expect
-        ("查询出错了");
-        //todo 获取tasks时要限制下数量
-        return Supervisor {
-            tasks: word_results,
-            cursor: 0,
-            conn,
-        };
+        let all_results:Vec<Word> = words.filter(status.gt(-1)).load::<Word>(&conn).expect("查询出错了");
+        let half_size;
+        if let Some(size) = size_o {
+             half_size = min(all_results.len() / 2, size);
+        }else{
+             half_size = all_results.len() / 2;
+        }
+
+        let mut rng =  thread_rng();
+        let items = all_results.choose_multiple(&mut rng, half_size);
+            let mut word_results = Vec::new();
+            for item in items {
+                word_results.push(item.clone());
+            }
+            return Supervisor {
+                tasks: word_results,
+                cursor: 0,
+                conn,
+            };
     }
 
     fn exam(&self, explanation: &str) -> bool {
@@ -165,19 +181,26 @@ pub struct YoudaoConfig {
 
 
 impl Searchable for YoudaoSearcher {
-    fn search(&self, word: String) -> Vec<String> {
+    fn search(&self, word: String) -> Result<Vec<String>, ()> {
         let params: HashMap<&str, String> = self.build_params_by_word(word.clone());
         let response_text = self.exec_query(params);
         // println!("接口返回数据是:{}", &response_text);
-        let youdao_response: YoudaoResponse = serde_json::from_str(response_text.as_str()).unwrap();
-        let values_iter = youdao_response.web.iter();
-        for val in values_iter {
-            if word.eq(&val.key.to_lowercase()) {
-                return val.value.clone();
+        let wrapped_youdao_response: Result<YoudaoResponse, _> = serde_json::from_str(response_text.as_str());
+
+        match wrapped_youdao_response {
+            Ok(youdao_response)=>{
+                let values_iter = youdao_response.web.iter();
+                for val in values_iter {
+                    if word.eq(&val.key.to_lowercase()) {
+                        return Ok(val.value.clone());
+                    }
+                }
             }
+            // Err(erro)=> return vec![],
+            Err(_) =>return Err(())
         }
 
-        return vec![];
+        return Err(());
     }
 }
 
@@ -240,4 +263,17 @@ pub fn establish_connection() -> SqliteConnection {
     SqliteConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
+
+// type Result<T> = std::result<T, CommonError>;
+//
+// #[derive(Debug, Clone)]
+// struct CommonError;
+//
+// impl fmt::Desplay for CommonError{
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result{
+//         write!(f, "出错了")
+//     }
+// }
+
+
 
