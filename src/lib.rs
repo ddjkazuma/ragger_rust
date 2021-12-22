@@ -1,32 +1,30 @@
 #[macro_use]
 extern crate diesel;
-extern crate dotenv;
-extern crate crypto;
-extern crate uuid;
 extern crate chrono;
+extern crate crypto;
+extern crate dotenv;
 extern crate serde;
 extern crate termion;
-
+extern crate uuid;
 
 pub mod models;
 pub mod schema;
 
+use chrono::Utc;
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 use diesel::prelude::*;
 use dotenv::dotenv;
-use std::env;
-use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
-use crypto::sha2::Sha256;
-use crypto::digest::Digest;
-use uuid::Uuid;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use models::Word;
-use schema::words::dsl::*;
-use rand::thread_rng;
 use rand::seq::SliceRandom;
+use rand::thread_rng;
+use schema::words::dsl::*;
+use serde::{Deserialize, Serialize};
 use std::cmp::min;
-
+use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
+use std::env;
+use uuid::Uuid;
 
 pub trait Searchable {
     fn search(&self, word: String) -> Result<Vec<String>, ()>;
@@ -48,7 +46,7 @@ pub trait Supervisable {
     //将当前单词设置为已复习状态
     fn set_word_reviewed_once(&self);
     //
-    fn is_reviewable(&self)->bool;
+    fn is_reviewable(&self) -> bool;
 }
 
 pub struct Supervisor {
@@ -57,29 +55,31 @@ pub struct Supervisor {
     conn: SqliteConnection,
 }
 
-
 impl Supervisable for Supervisor {
-    fn initialize(size_o :Option<usize>) -> Supervisor {
+    fn initialize(size_o: Option<usize>) -> Supervisor {
         let conn = establish_connection();
-        let all_results:Vec<Word> = words.filter(status.gt(-1)).load::<Word>(&conn).expect("查询出错了");
+        let all_results: Vec<Word> = words
+            .filter(status.gt(-1))
+            .load::<Word>(&conn)
+            .expect("查询出错了");
         let half_size;
         if let Some(size) = size_o {
-             half_size = min(all_results.len() / 2, size);
-        }else{
-             half_size = all_results.len() / 2;
+            half_size = min(all_results.len() / 2, size);
+        } else {
+            half_size = all_results.len() / 2;
         }
 
-        let mut rng =  thread_rng();
+        let mut rng = thread_rng();
         let items = all_results.choose_multiple(&mut rng, half_size);
-            let mut word_results = Vec::new();
-            for item in items {
-                word_results.push(item.clone());
-            }
-            return Supervisor {
-                tasks: word_results,
-                cursor: 0,
-                conn,
-            };
+        let mut word_results = Vec::new();
+        for item in items {
+            word_results.push(item.clone());
+        }
+        return Supervisor {
+            tasks: word_results,
+            cursor: 0,
+            conn,
+        };
     }
 
     fn exam(&self, explanation: &str) -> bool {
@@ -98,7 +98,6 @@ impl Supervisable for Supervisor {
         self.cursor -= 1;
     }
 
-
     fn get_current_word(&self) -> Option<&Word> {
         return self.tasks.get(self.cursor);
     }
@@ -108,13 +107,21 @@ impl Supervisable for Supervisor {
     }
 
     fn set_word_reviewed_once(&self) {
-        let current_word = self.tasks.get(self.cursor).expect(format!("程序出错,无法找到单词,游标位置:{}", self.cursor).as_str());
+        let current_word = self
+            .tasks
+            .get(self.cursor)
+            .expect(format!("程序出错,无法找到单词,游标位置:{}", self.cursor).as_str());
         //如果status <=3 那么就status
         if current_word.status < 3 {
-            diesel::update(words.find(current_word.id)).set(status.eq(status + 1)).execute(&self
-                .conn).unwrap();
+            diesel::update(words.find(current_word.id))
+                .set(status.eq(status + 1))
+                .execute(&self.conn)
+                .unwrap();
         } else {
-            diesel::update(words.find(current_word.id)).set(status.eq(-1)).execute(&self.conn).unwrap();
+            diesel::update(words.find(current_word.id))
+                .set(status.eq(-1))
+                .execute(&self.conn)
+                .unwrap();
         }
         //todo 这里直接用unwrap不大合适，需要进行错误处理
     }
@@ -144,11 +151,9 @@ struct YoudaoResponse {
     is_word: bool,
     #[serde(rename = "speakUrl")]
     speak_url: String,
-
 }
 
-#[derive(Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct YoudaoValues {
     value: Vec<String>,
     key: String,
@@ -169,7 +174,6 @@ struct YoudaoBasic {
     explains: Vec<String>,
 }
 
-
 pub struct YoudaoSearcher {
     config: YoudaoConfig,
 }
@@ -179,16 +183,16 @@ pub struct YoudaoConfig {
     pub appsecret: String,
 }
 
-
 impl Searchable for YoudaoSearcher {
     fn search(&self, word: String) -> Result<Vec<String>, ()> {
         let params: HashMap<&str, String> = self.build_params_by_word(word.clone());
         let response_text = self.exec_query(params);
         // println!("接口返回数据是:{}", &response_text);
-        let wrapped_youdao_response: Result<YoudaoResponse, _> = serde_json::from_str(response_text.as_str());
+        let wrapped_youdao_response: Result<YoudaoResponse, _> =
+            serde_json::from_str(response_text.as_str());
 
         match wrapped_youdao_response {
-            Ok(youdao_response)=>{
+            Ok(youdao_response) => {
                 let values_iter = youdao_response.web.iter();
                 for val in values_iter {
                     if word.eq(&val.key.to_lowercase()) {
@@ -197,7 +201,7 @@ impl Searchable for YoudaoSearcher {
                 }
             }
             // Err(erro)=> return vec![],
-            Err(_) =>return Err(())
+            Err(_) => return Err(()),
         }
 
         return Err(());
@@ -206,14 +210,10 @@ impl Searchable for YoudaoSearcher {
 
 impl YoudaoSearcher {
     pub fn new(config: YoudaoConfig) -> YoudaoSearcher {
-        YoudaoSearcher {
-            config,
-        }
+        YoudaoSearcher { config }
     }
 
-
-    fn build_sign(salt: &str, word: &str, app_key: &str, cur_time: &str, app_sec: &str)
-                  -> String {
+    fn build_sign(salt: &str, word: &str, app_key: &str, cur_time: &str, app_sec: &str) -> String {
         let mut base_str: String = String::from(app_key);
         base_str.push_str(word);
         base_str.push_str(salt);
@@ -228,15 +228,17 @@ impl YoudaoSearcher {
         let mut map = HashMap::new();
         let salt = Uuid::new_v4().to_string();
         let cur_time = Utc::now().timestamp().to_string();
-        map.insert("sign", YoudaoSearcher::build_sign(
-            salt.as_str(),
-            word.as_str(),
-            //"2f3a48a702316da0",
-            self.config.appkey.as_str(),
-            cur_time.as_str(),
-            //"gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"
-            self.config.appsecret.as_str(),
-        ),
+        map.insert(
+            "sign",
+            YoudaoSearcher::build_sign(
+                salt.as_str(),
+                word.as_str(),
+                //"2f3a48a702316da0",
+                self.config.appkey.as_str(),
+                cur_time.as_str(),
+                //"gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"
+                self.config.appsecret.as_str(),
+            ),
         );
         map.insert("q", word);
         map.insert("from", String::from("zh-CHS"));
@@ -251,8 +253,13 @@ impl YoudaoSearcher {
     fn exec_query(&self, params: HashMap<&str, String>) -> String {
         let client = reqwest::blocking::Client::new();
         // let params = [("foo", "bar"),("barz", "quux")]
-        let res = client.post("https://openapi.youdao.com/api").form(&params).send()
-            .unwrap().text().unwrap();
+        let res = client
+            .post("https://openapi.youdao.com/api")
+            .form(&params)
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
         return res;
     }
 }
@@ -274,6 +281,3 @@ pub fn establish_connection() -> SqliteConnection {
 //         write!(f, "出错了")
 //     }
 // }
-
-
-
