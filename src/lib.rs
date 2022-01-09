@@ -187,7 +187,7 @@ impl Searchable for YoudaoSearcher {
     fn search(&self, word: String) -> Result<Vec<String>, ()> {
         let params: HashMap<&str, String> = self.build_params_by_word(word.clone());
         let response_text = self.exec_query(params);
-        // println!("接口返回数据是:{}", &response_text);
+        println!("接口返回数据是:{}", &response_text);
         let wrapped_youdao_response: Result<YoudaoResponse, _> =
             serde_json::from_str(response_text.as_str());
 
@@ -241,8 +241,8 @@ impl YoudaoSearcher {
             ),
         );
         map.insert("q", word);
-        map.insert("from", String::from("zh-CHS"));
-        map.insert("to", String::from("en"));
+        map.insert("to", String::from("zh-CHS"));
+        map.insert("from", String::from("en"));
         map.insert("appKey", String::from("2f3a48a702316da0"));
         map.insert("salt", salt);
         map.insert("signType", String::from("v3"));
@@ -270,6 +270,7 @@ pub fn establish_connection() -> SqliteConnection {
     SqliteConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
+//todo
 
 // type Result<T> = std::result<T, CommonError>;
 //

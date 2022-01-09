@@ -1,14 +1,14 @@
+extern crate clap;
 extern crate diesel;
 extern crate ragger_api;
-extern crate clap;
 
+use clap::{App, Arg, arg};
 use diesel::prelude::*;
 use ragger_api::models::*;
-use ragger_api::*;
-use clap::{App, Arg};
-use std::io::{stdin, stdout, Write};
 use ragger_api::schema::words;
 use ragger_api::schema::words::dsl::*;
+use ragger_api::*;
+use std::io::{stdin, stdout, Write};
 use termion::color;
 
 // #[derive(StructOpt)]
@@ -16,7 +16,6 @@ use termion::color;
 //     operation: String,
 //     word: String,
 // }
-
 
 fn main() {
     // let args = Cli::from_args();
@@ -28,41 +27,55 @@ fn main() {
         .version("1.0")
         .author("Lv Piao 1243194544@qq.com")
         .about("单词复习功能")
-        .arg("<operation> '操作:query/review/list'")
-        .arg("[param] '操作参数:如果是query则为要查询的单词'")
-        .arg(Arg::new("limit")
-            .short('l')
-            .long("limit")
-            .takes_value(true)
-            .about("设置本次复习的最大单词数量"))
+        .arg(
+            arg!(<operation> "操作:query/review/list")
+        )
+        .arg(
+            arg!([param] "操作参数:如果是query则为要查询的单词")
+        )
+        .arg(
+            Arg::new("limit")
+                .short('l')
+                .long("limit")
+                .takes_value(true)
+                .help("设置本次复习的最大单词数量"),
+        )
         .get_matches();
     if let Some(o) = matches.value_of("operation") {
         if o.eq("query") {
             if let Some(p) = matches.value_of("param") {
                 //todo 先查询一下这个单词在数据库里是否存在
                 let conn = establish_connection();
-                let word_results:Vec<Word> = words.filter(name.eq(p)).limit(1).load::<Word>(&conn).expect("查询出错了");
+                let word_results: Vec<Word> = words
+                    .filter(name.eq(p))
+                    .limit(1)
+                    .load::<Word>(&conn)
+                    .expect("查询出错了");
                 if word_results.len() > 0 {
-                    println!("{}单词的释义是: {}", color::Fg(color::Green), word_results.get(0).unwrap()
-                    .exp_cn);
-                }else{
+                    println!(
+                        "{}单词的释义是: {}",
+                        color::Fg(color::Green),
+                        word_results.get(0).unwrap().exp_cn
+                    );
+                } else {
                     let youdao_searcher = YoudaoSearcher::new(YoudaoConfig {
                         appkey: String::from("2f3a48a702316da0"),
                         appsecret: String::from("gTzzXsjEpFX9wUd8Rrio5SXfgzlcqq56"),
                     });
-                    match youdao_searcher.search(String::from(p)){
-                        Ok(values)=>{
+                    match youdao_searcher.search(String::from(p)) {
+                        Ok(values) => {
                             println!("{}单词的释义是: {:?}", color::Fg(color::Green), &values);
                             create_word(&conn, p, serde_json::to_string(&values).unwrap().as_str());
                         }
-                        Err(_)=>{
+                        Err(_) => {
                             // println!("{}有道api查询错误, 错误原因; {:?}", color::Fg(color::Red), error);
-                            println!("{}无法查找到该单词的释义，请确认该单词拼写是否正确", color::Fg(color::Red));
+                            println!(
+                                "{}无法查找到该单词的释义，请确认该单词拼写是否正确",
+                                color::Fg(color::Red)
+                            );
                         }
                     }
-                    //todo 将查询出来的单词插入数据库
                 }
-
             } else {
                 println!("{}请输入param参数", color::Fg(color::Red));
             }
@@ -72,14 +85,10 @@ fn main() {
             //_skip 跳过当前复习的单词
             //_remind
             let mut supervisor = match matches.value_of("limit") {
-                Some(limit)=>{
-                    Supervisor::initialize(Some(limit.parse().unwrap()))
-                }
-                None=>{
-                    Supervisor::initialize(None)
-                }
+                Some(limit) => Supervisor::initialize(Some(limit.parse().unwrap())),
+                None => Supervisor::initialize(None),
             };
-            if !supervisor.is_reviewable(){
+            if !supervisor.is_reviewable() {
                 println!("{}当前没有可供复习的单词!", color::Fg(color::Red));
                 return;
             }
@@ -88,22 +97,27 @@ fn main() {
                 let mut confirmation = String::new();
                 stdin().read_line(&mut confirmation).unwrap();
                 match confirmation.trim() {
-                    "Y"=>{
-                        println!("{}接下来将开始复习, 请按照控制台输出的单词输入其释义", color::Fg(color::Green));
+                    "Y" => {
+                        println!(
+                            "{}接下来将开始复习, 请按照控制台输出的单词输入其释义",
+                            color::Fg(color::Green)
+                        );
                         break;
-                    },
-                    "N"=>return,
-                    _ =>println!("{}请输入'Y'来确认开始复习或者输入'N'退出复习", color::Fg(color::Green))
-
+                    }
+                    "N" => return,
+                    _ => println!(
+                        "{}请输入'Y'来确认开始复习或者输入'N'退出复习",
+                        color::Fg(color::Green)
+                    ),
                 }
             }
             loop {
-                if let Some(current_word) = supervisor.get_current_word(){
+                if let Some(current_word) = supervisor.get_current_word() {
                     match stdout().flush() {
                         Err(_e) => panic!("刷新输出失败"),
                         _ => {}
                     }
-                    println!("{}> {}", color::Fg(color::White),current_word.name);
+                    println!("{}> {}", color::Fg(color::White), current_word.name);
                     let mut input = String::new();
                     stdin().read_line(&mut input).unwrap();
                     let answer = input.trim();
@@ -114,7 +128,7 @@ fn main() {
                         // _cheat 直接给出答案, 不算次数
                         // _remove 将当前单词从表中直接移除单词
                         // _
-                        "_exit" => break,//放弃复习
+                        "_exit" => break, //放弃复习
                         //输入单词
                         _ => {
                             if supervisor.exam(&answer) {
@@ -122,7 +136,11 @@ fn main() {
                                 supervisor.set_word_reviewed_once();
                             } else {
                                 // println!("{}回答内容是: {}", color::Fg(color::Red), answer);
-                                println!("{}回答错误，正确答案释义是: {}", color::Fg(color::Red), current_word.exp_cn);
+                                println!(
+                                    "{}回答错误，正确答案释义是: {}",
+                                    color::Fg(color::Red),
+                                    current_word.exp_cn
+                                );
                             }
                             if supervisor.is_finished() {
                                 //todo 复习完毕之后输出总结，包括成功次数，失败次数，共复习次数
@@ -133,19 +151,34 @@ fn main() {
                             }
                         }
                     }
-                    //todo 采集需要复习的单词并且显示出来
-                    // let mut child = Command::new(command).spawn().unwrap();
-                    // child.wait();
+                //todo 采集需要复习的单词并且显示出来
+                // let mut child = Command::new(command).spawn().unwrap();
+                // child.wait();
                 } else {
                     panic!("程序出错")
                 };
             }
-        } else {
+        }else if  o.eq("remove"){
+            if let Some(p) = matches.value_of("param"){
+                let conn = establish_connection();
+                let words: Vec<Word> = words
+                    .filter(name.eq(p))
+                    .limit(1)
+                    .load::<Word>(&conn)
+                    .expect("查询出错了");
+                if words.len() > 1 {
+                    diesel::delete(words.filter(name.eq(p))).execute(&conn);
+                    println!("删除单词成功")
+                }else{
+                    println!("单词不存在")
+                }
+            }
+        }
+        else {
             println!("{}无法识别的operation参数", color::Fg(color::Red));
         }
     }
 }
-
 
 pub fn create_word<'a>(conn: &SqliteConnection, name_field: &'a str, exp_cn_field: &'a str) {
     // use ragger_api::schema::words::dsl::*;
@@ -154,15 +187,13 @@ pub fn create_word<'a>(conn: &SqliteConnection, name_field: &'a str, exp_cn_fiel
         exp_cn: exp_cn_field,
     };
     // println!("要插入的数据是 {:?}", &new_word);
-    diesel::insert_into(words::table).values(new_word).execute(conn).expect("插入数据失败");
+    diesel::insert_into(words::table)
+        .values(new_word)
+        .execute(conn)
+        .expect("插入数据失败");
     // let word_results = words.filter(status.eq(0)).limit(10).load::<Word>(conn).expect("查询出错了");
     // for word in word_results {
     //     println!("单词名称是:{}, 单词释义:{}", word.name, word.exp_cn);
     // }
     // println!("查询到了{}条数据", word_results.len());
 }
-
-
-
-
-
