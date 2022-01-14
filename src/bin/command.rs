@@ -28,7 +28,7 @@ fn main() {
         .author("Lv Piao 1243194544@qq.com")
         .about("单词复习功能")
         .arg(
-            arg!(<operation> "操作:query/review/list")
+            arg!(<operation> "操作:query/review/list/remove")
         )
         .arg(
             arg!([param] "操作参数:如果是query则为要查询的单词")
@@ -161,14 +161,17 @@ fn main() {
         }else if  o.eq("remove"){
             if let Some(p) = matches.value_of("param"){
                 let conn = establish_connection();
-                let words: Vec<Word> = words
+                let word_results: Vec<Word> = words
                     .filter(name.eq(p))
                     .limit(1)
                     .load::<Word>(&conn)
                     .expect("查询出错了");
-                if words.len() > 1 {
-                    diesel::delete(words.filter(name.eq(p))).execute(&conn);
-                    println!("删除单词成功")
+                if word_results.len() > 0 {
+                    let delete_result = diesel::delete(words.filter(name.eq(p))).execute(&conn);
+                    match delete_result {
+                        Ok(deleted_count)=>println!("成功删除{}条记录", deleted_count.to_string()),
+                        _=>println!("删除失败")
+                    }
                 }else{
                     println!("单词不存在")
                 }
